@@ -116,10 +116,11 @@ module.exports = async (opts) => {
   const isApng = (ext === 'apng')
   const isGif = (ext === 'gif')
   const isMp4 = (ext === 'mp4')
+  const isMov = (ext === 'mov')
   const isPng = (ext === 'png')
   const isJpg = (ext === 'jpg' || ext === 'jpeg')
 
-  if (!(isApng || isGif || isMp4 || isPng || isJpg)) {
+  if (!(isApng || isGif || isMp4 || isPng || isJpg || isMov)) {
     throw new Error(`Unsupported output format "${output}"`)
   }
 
@@ -128,7 +129,7 @@ module.exports = async (opts) => {
     ? path.join(tempDir, 'frame-%012d.png')
     : output
   const frameType = (isJpg ? 'jpeg' : 'png')
-  const isMultiFrame = isApng || isMp4 || /%d|%\d{2,3}d/.test(tempOutput)
+  const isMultiFrame = isApng || isMp4 || isMov || /%d|%\d{2,3}d/.test(tempOutput)
 
   let lottieData = animationData
 
@@ -282,7 +283,7 @@ ${inject.body || ''}
   let ffmpeg
   let ffmpegStdin
 
-  if (isApng || isMp4) {
+  if (isApng || isMp4 || isMov) {
     ffmpegP = new Promise((resolve, reject) => {
       const ffmpegArgs = [
         '-v', 'error',
@@ -298,7 +299,7 @@ ${inject.body || ''}
         )
       }
 
-      if (isMp4) {
+      if (isMp4 || isMov) {
         let scale = `scale=${width}:-2`
 
         if (width % 2 !== 0) {
@@ -309,19 +310,28 @@ ${inject.body || ''}
           }
         }
 
-        ffmpegArgs.push(
-          '-f', 'lavfi', '-i', `color=c=black:size=${width}x${height}`,
-          '-f', 'image2pipe', '-c:v', 'png', '-r', `${fps}`, '-i', '-',
-          '-filter_complex', `[0:v][1:v]overlay[o];[o]${scale}:flags=bicubic[out]`,
-          '-map', '[out]',
-          '-c:v', 'libx264',
-          '-profile:v', ffmpegOptions.profileVideo,
-          '-preset', ffmpegOptions.preset,
-          '-crf', ffmpegOptions.crf,
-          '-movflags', 'faststart',
-          '-pix_fmt', 'yuv420p',
-          '-r', fps
-        )
+        if (isMp4) {
+          ffmpegArgs.push(
+            '-f', 'lavfi', '-i', `color=c=black:size=${width}x${height}`,
+            '-f', 'image2pipe', '-c:v', 'png', '-r', `${fps}`, '-i', '-',
+            '-filter_complex', `[0:v][1:v]overlay[o];[o]${scale}:flags=bicubic[out]`,
+            '-map', '[out]',
+            '-r', fps,
+            '-c:v', 'libx264',
+            '-profile:v', ffmpegOptions.profileVideo,
+            '-preset', ffmpegOptions.preset,
+            '-crf', ffmpegOptions.crf,
+            '-movflags', 'faststart',
+            '-pix_fmt', 'yuv420p'
+          )
+        } else if (isMov) {
+          ffmpegArgs.push(
+            '-f', 'image2pipe', '-c:v', 'png', '-r', `${fps}`, '-i', '-',
+            '-r', fps,
+            '-c:v', 'qtrle',
+            '-pix_fmt', 'argb',
+          )
+        }
       }
 
       ffmpegArgs.push(
@@ -365,7 +375,7 @@ ${inject.body || ''}
     // eslint-disable-next-line no-undef
     await page.evaluate((frame) => animation.goToAndStop(frame, true), frame)
     const screenshot = await rootHandle.screenshot({
-      path: (isApng || isMp4) ? undefined : frameOutputPath,
+      path: (isApng || isMp4 || isMov) ? undefined : frameOutputPath,
       ...screenshotOpts
     })
     
@@ -378,7 +388,7 @@ ${inject.body || ''}
       break
     }
 
-    if (isApng || isMp4) {
+    if (isApng || isMp4 || isMov) {
       if (ffmpegStdin.writable) {
         ffmpegStdin.write(screenshot)
       }
@@ -396,8 +406,16 @@ ${inject.body || ''}
     spinnerR.succeed()
   }
 
-  if (isApng || isMp4) {
-    const spinnerF = !quiet && ora(`Generating ${isApng ? 'animated png' : 'mp4'} with FFmpeg`).start()
+  if (isApng || isMp4 || isMov) {
+    let formatDescription;
+    if (isApng) {
+      formatDescription = 'animated png'
+    } else if (isMp4) {
+      formatDescription = 'mp4'
+    } else if (isMov) {
+      formatDescription = 'transparent qtrle mov'
+    }
+    const spinnerF = !quiet && ora(`Generating ${formatDescription} with FFmpeg`).start()
 
     ffmpegStdin.end()
     await ffmpegP
