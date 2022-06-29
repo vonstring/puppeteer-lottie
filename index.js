@@ -413,7 +413,7 @@ ${inject.body || ''}
     } else if (isMp4) {
       formatDescription = 'mp4'
     } else if (isMov) {
-      formatDescription = 'transparent qtrle mov'
+      formatDescription = 'transparent Quicktime mov'
     }
     const spinnerF = !quiet && ora(`Generating ${formatDescription} with FFmpeg`).start()
 
