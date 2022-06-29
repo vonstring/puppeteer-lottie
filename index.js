@@ -328,8 +328,8 @@ ${inject.body || ''}
           ffmpegArgs.push(
             '-f', 'image2pipe', '-c:v', 'png', '-r', `${fps}`, '-i', '-',
             '-r', fps,
-            '-c:v', 'qtrle',
-            '-pix_fmt', 'argb',
+            '-c:v', 'prores_ks',
+            '-profile:v', '5',
           )
         }
       }
